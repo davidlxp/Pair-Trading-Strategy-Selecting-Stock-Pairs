@@ -1,0 +1,138 @@
+############ Importing Libraries ############
+import numpy as np
+import pandas as pd
+import quandl   # The package help with using Quandl Database
+import datetime as dt
+import pandas_datareader.data as pdr
+import os
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib import style
+import statsmodels
+import statsmodels.api as sm
+from statsmodels.tsa.stattools import coint
+import seaborn
+import pylab 
+import scipy.stats as stats
+import statistics
+
+############ Choose pairs out of 10 companies from oil industry  ############
+style.use('ggplot')
+
+ticker=('BP','TOT','CVX','XOM','RDS-B','EC','SNP','SU','PTR','OXY')
+
+start = dt.datetime(2014,1,1)
+end = dt.datetime(2019,1,4)
+df_stock = pdr.DataReader(ticker,'yahoo', start, end)
+
+df_stock.head(10)
+df_close = df_stock['Adj Close']
+df_close.head(10)
+
+df_close.plot(figsize=(20,10))
+
+############ Choose pairs out of 10 companies from oil industry  ############
+def find_cointegrated_pairs(data):
+    n = data.shape[1]
+    score_matrix = np.zeros((n, n))
+    pvalue_matrix = np.ones((n, n))
+    keys = data.keys()
+    pairs = []
+    for i in range(n):
+        for j in range(i+1, n):
+            S1 = data[keys[i]]
+            S2 = data[keys[j]]
+            result = coint(S1, S2)
+            score = result[0]
+            pvalue = result[1]
+            score_matrix[i, j] = score
+            pvalue_matrix[i, j] = pvalue
+            if pvalue < 0.05:
+                pairs.append((keys[i], keys[j]))
+    return score_matrix, pvalue_matrix, pairs
+    
+scores,pvalues,pairs = find_cointegrated_pairs(df_close)
+
+plt.figure(figsize=(10, 10)) # Before using seaborn, setting the plot size
+seaborn.heatmap(pvalues, xticklabels=df_close.keys(), yticklabels=df_close.keys(), cmap='RdYlGn_r', mask = (pvalues >= 0.05))
+
+print(pairs)
+
+############ Checking the Cointegration Pvalue for each selected pairs ############
+
+for each in pairs:
+    check_result = {}
+    
+    (a,b) = each
+    S1 = df_close[a]
+    S2 = df_close[b]
+
+    score , pvalue, _= coint(S1,S2)
+    check_result[each] = pvalue
+    
+    print(check_result)
+    
+############ Checking the Correlation for the selected pairs ############
+
+for each in pairs:
+    check_result = {}
+    
+    (a,b) = each
+    S1 = df_close[a]
+    S2 = df_close[b]
+
+    correlation = S1.corr(S2)
+    check_result[each] = correlation
+    
+    print(check_result)
+   
+############ Taking 'SNP' and 'TOT' as an example, they have best coint among these 5 pairs, and decent correlation ############
+name_1 = 'SNP'
+name_2 = 'TOT'
+
+S1 = df_close[name_1]
+S2 = df_close[name_2]
+
+pd.concat([S1, S2], axis=1).plot(figsize=(15,7))
+
+############ We use OLS linear regression to get the coefficient for the two securities AND use this coefficient to normalize these stock ############
+
+S1 = sm.add_constant(S1) # Adding a new column beside the value of S1, and the value in that column is '1'
+results = sm.OLS(S2, S1).fit() # Building a linear regression with S2 as y and S1 as x, and find the fitting parameters.
+S1 = S1[name_1] # Taking out the real stock close value of S1 from the new S1 data frame which contains column with '1'
+b = results.params[name_1]
+
+spread = S2 - b * S1
+
+spread.plot(figsize=(15,7))
+plt.axhline(spread.mean(), color='black',linestyle='--')
+plt.xlabel('Time')
+plt.legend(['Spread','Mean']);
+
+############ To check if the spread is normalized or not ############
+
+plt.hist(spread, bins=20)
+plt.xlabel('Spread')
+plt.ylabel('Amount')
+
+stats.probplot(spread, dist="norm", plot=pylab)
+# The plot shows a strong normality
+
+############ The strategy during trading ############
+
+### Defining a z-score calculating function to assist implement trading strategy
+### We will trade (both short and long with same amount of money) when the spread gets to a 1 standard deviation.
+### We will close the trading when the spread revert back to the mean of spread.
+
+def z_score(series):
+    return (series-series.mean())/np.std(series)
+    
+fig= plt.figure(figsize=(15,7)) # Adjusting figure size
+
+z_score(spread).plot(color = 'blue')
+
+plt.axhline(z_score(spread).mean(), color='black')
+plt.axhline(1.0, color='red', linestyle='--')
+plt.axhline(-1.0, color='gold', linestyle='--')
+
+plt.legend(['Spread Z-score', 'Mean', '+1', '-1']);
