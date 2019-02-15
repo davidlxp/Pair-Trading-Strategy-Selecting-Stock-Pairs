@@ -16,9 +16,10 @@ import pylab
 import scipy.stats as stats
 import statistics
 
-############ Choose pairs out of 10 companies from oil industry  ############
+############ Choose pairs out of portfolio############
 style.use('ggplot')
 
+### Example portfolio from oil industry
 ticker=('BP','TOT','CVX','XOM','RDS-B','EC','SNP','SU','PTR','OXY')
 
 start = dt.datetime(2014,1,1)
@@ -31,7 +32,7 @@ df_close.head(10)
 
 df_close.plot(figsize=(20,10))
 
-############ Choose pairs out of 10 companies from oil industry  ############
+############ Constructed a system to pick stock pairs  ############
 def find_cointegrated_pairs(data):
     n = data.shape[1]
     score_matrix = np.zeros((n, n))
